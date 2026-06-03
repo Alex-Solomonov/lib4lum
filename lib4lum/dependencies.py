@@ -9,3 +9,7 @@ from scipy import interpolate
 
 
 ### local packages
+from . import (
+    phase_profiles,
+    model_generator
+)
