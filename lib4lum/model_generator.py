@@ -79,7 +79,7 @@ def generate_model_set(N : int,
 def design_lens(N : int, F : float, wl : float, period : float, size = int):
     '''
     Generates the discretized geometry of a metalens based on its target
-    phase profile.
+    focal distance.
     The function computes the ideal lens phase distribution, quantizes it
     into a finite number of phase levels, and maps each quantized phase value
     to the corresponding resonator radius. The resulting radius grid and

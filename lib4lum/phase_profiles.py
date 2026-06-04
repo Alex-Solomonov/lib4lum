@@ -1,6 +1,6 @@
 from .dependencies import *
 
-def _make_grid(size: int, period: float) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+def _make_grid(size: int, period: float) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Symmetric (2*size+1)x(2*size+1) coordinate grid centered at origin.
     Args:
         size: Number of points from center to edge.
@@ -10,11 +10,10 @@ def _make_grid(size: int, period: float) -> tuple[npt.NDArray[np.float64], npt.N
         (x, X, Y) where x is the 1D axis and X, Y are 2D meshgrids.
     """
     x = np.linspace(-size*period, size*period, 2*size + 1)
-    X, Y = np.meshgrid(x, x)
-    return X, Y
+    return np.meshgrid(x, x)
 
 
-def lens_profile(F: float, wl: float, period: float, size: int) -> npt.NDArray[np.float64]:
+def lens_profile(F: float, wl: float, period: float, size: int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Computes 2D phase profile of a lens from Fermat's principle.
     Args:
         F: Focal distance in meters.
@@ -42,10 +41,11 @@ def deflector_profile(theta_x: float, theta_y: float, wl: float, period: float, 
     Returns:
         A numpy array of shape (2*size+1, 2*size+1) containing the phase.
     """
-    _, X, Y = _make_grid(size, period)
+    X, Y = _make_grid(size, period)
     phase = -(X*np.sin(theta_x) + Y*np.sin(theta_y))*2*np.pi/wl
     return phase
 
+# deprecated - use quantize instead
 def binarize(phase: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Binarizes phase to {0, pi}.
     Args:
