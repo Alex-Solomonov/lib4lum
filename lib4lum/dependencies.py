@@ -6,6 +6,7 @@ from pathlib import Path
 from tqdm import tqdm
 from glob import glob
 from scipy import interpolate
+from psutil import cpu_count
 
 
 ### local packages
