@@ -4,8 +4,11 @@
 
 ```
 project directory/
-├── lib4lum/
-│   └── ...library files
+├── project/
+│       ├── Project File 1
+│       └── Project File 2
+│   └── lib4lum/
+│       └── ...library files
 └── models/
     └── eta_XXX/
         ├── !seeds.txt
