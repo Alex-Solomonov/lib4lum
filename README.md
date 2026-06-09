@@ -5,8 +5,8 @@
 ```
 project directory/
 ├── project/
-│       ├── Project File 1
-│       └── Project File 2
+│   │   ├── Project File 1
+│   │   └── Project File 2
 │   └── lib4lum/
 │       └── ...library files
 └── models/
