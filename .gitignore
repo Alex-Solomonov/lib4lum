@@ -37,6 +37,9 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
+testbuild.py
+testpack.py
+testpack.ipynb
 htmlcov/
 .tox/
 .nox/
@@ -216,3 +219,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#Custom Lum models
+models/
