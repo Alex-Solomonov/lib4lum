@@ -1,6 +1,6 @@
 # lib4lum
 
-### File Tree:
+### Global File Tree:
 
 ```
 project directory/
@@ -9,9 +9,11 @@ project directory/
 │   │   └── Project File 2
 │   └── lib4lum/
 │       └── ...library files
-└── models/
+├── models/
+│    └── eta_XXX/
+│       ├── !seeds.txt
+│       ├── clean/
+│       └── solved/
+└── data/
     └── eta_XXX/
-        ├── !seeds.txt
-        ├── clean/
-        └── solved/
 ```

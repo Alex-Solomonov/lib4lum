@@ -1,4 +1,28 @@
 from .dependencies import *
+from multiprocessing import Pool
+from psutil import cpu_count
+
+def _default_processes() -> int:
+    """
+    half the logical CPU cores,
+    the FDTD memory-bandwidth limit
+    """
+    return max(1, (cpu_count(logical=False) or 2) // 2)
+
+def _run(file : Path | str, cores : int = 2, **kwards):
+    '''
+    cores : int
+        Logical cores (physical + thread according documentation)
+    '''
+    savename = file.parent.parent / 'solved' / file.name
+    ### Dummy way to load correct type
+    client = lumapi.FDTD(str(file), processes = cores, **kwards)
+
+    client.run()
+
+    client.save(str(savename))
+    client.close()
+    os.remove(file)
 
 def run_folder(folder_path : Path | str, **kwards) -> None:
     '''
@@ -19,24 +43,20 @@ def run_folder(folder_path : Path | str, **kwards) -> None:
     Returns:
         None
     '''
+
+    if 'multiprocessing' in kwards:
+        workers = _default_processes()
+        child_cores = 1
+    else:
+        workers = 1
+        child_cores = _default_processes()
+
     clean_path = folder_path / 'clean'
-    solved_path = folder_path / 'solved'
 
     names = clean_path.glob('*.fsp')
-    for file in names:
-        ### Dummy way to load correct type
-        ###ToDo later
-        ###ToDo kwards hide option
-        savename = solved_path / file.name
-        client = lumapi.FDTD(str(file), **kwards)
-
-        client.run()
-
-        client.save(str(savename))
-        client.close()
-        os.remove(file)
-
-
+    with Pool(processes = workers) as pool:
+        pool.map(_run, names, child_cores)
+      
 def run_project(project_path : Path | str, **kwards) -> None:
     '''
     Process all simulation folders within a project directory.
