@@ -1,6 +1,6 @@
 from .dependencies import *
 
-def run_folder(folder_path : Path | str) -> None:
+def run_folder(folder_path : Path | str, **kwards) -> None:
     '''
     Run all FDTD simulation files located in the 'clean' subdirectory,
     save the solved projects to the 'solved' subdirectory, and remove
@@ -28,7 +28,7 @@ def run_folder(folder_path : Path | str) -> None:
         ###ToDo later
         ###ToDo kwards hide option
         savename = solved_path / file.name
-        client = lumapi.FDTD(str(file), hide = True)
+        client = lumapi.FDTD(str(file), **kwards)
 
         client.run()
 
@@ -37,7 +37,7 @@ def run_folder(folder_path : Path | str) -> None:
         os.remove(file)
 
 
-def run_project(project_path : Path | str) -> None:
+def run_project(project_path : Path | str, **kwards) -> None:
     '''
     Process all simulation folders within a project directory.
     The function iterates through all subdirectories of 'project_path'
@@ -54,4 +54,4 @@ def run_project(project_path : Path | str) -> None:
     folder_list = [x for x in project_path.iterdir() if x.is_dir()]
 
     for folder in tqdm(folder_list):
-        run_folder(folder)
+        run_folder(folder, **kwards)
