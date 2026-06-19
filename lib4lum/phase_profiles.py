@@ -14,7 +14,7 @@ def _make_grid(size: int, period: float) -> tuple[npt.NDArray[np.float64], npt.N
     return X, Y
 
 
-def lens_profile(F: float, wl: float, period: float, size: int) -> npt.NDArray[np.float64]:
+def lens_profile(F: float, wl: float = None, period: float = None, size: int = None) -> npt.NDArray[np.float64]:
     """Computes 2D phase profile of a lens from Fermat's principle.
     Args:
         F: Focal distance in meters.
@@ -25,6 +25,7 @@ def lens_profile(F: float, wl: float, period: float, size: int) -> npt.NDArray[n
     Returns:
         A numpy array of shape (2*size+1, 2*size+1) containing the phase.
     """
+
     X, Y = _make_grid(size, period)
     phase = -(np.sqrt(X**2 + Y**2 + F**2) - F)*2*np.pi/wl
     return phase, X, Y

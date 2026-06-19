@@ -24,7 +24,7 @@ def run() -> None:
     GLOBAL_PATH = Path.cwd().parent
     MODELS_PATH = GLOBAL_PATH / 'models'
     MODELS_PATH.mkdir(parents = True, exist_ok = True)
-    _generate_config
+    _generate_config()
 
 def _generate_config() -> None:
     '''
@@ -35,18 +35,18 @@ def _generate_config() -> None:
     config.add_section('SOLVER')
     config['SOLVER']['wavelength'] = '1e-09'
 
-    config.add_section('BOX')
-    config['BOX']['z_min'] = '-3e-09'
-
-    config.add_section('MODEL')
-    config['MODEL']['period'] = '425e-09'
+    config.add_section('STRUCTURE')
+    config['STRUCTURE']['size'] = '12'
+    config['STRUCTURE']['period'] = '425e-09'
     
     config.add_section('UNIT CELL')
     config['UNIT CELL']['h_disk'] = '150e-9'
     config['UNIT CELL']['h_spacer'] = '150e-9'
     
+    config.add_section('BOX')
+    config['BOX']['z_min'] = '-3e-09'
 
-    with open(MODELS_PATH / 'model_config.ini', 'w') as config_file:
+    with open(MODELS_PATH / 'default_model_config.ini', 'w') as config_file:
         config.write(config_file)
 
 def read_config(config_path = None) -> dict:
@@ -55,7 +55,7 @@ def read_config(config_path = None) -> dict:
     if config_path is None:
         GLOBAL_PATH = Path.cwd().parent
         MODELS_PATH = GLOBAL_PATH / 'models'
-        config_path = MODELS_PATH / 'model_config.ini'
+        config_path = MODELS_PATH / 'default_model_config.ini'
 
     config = ConfigParser()
     config.read(config_path)
@@ -67,5 +67,8 @@ def read_config(config_path = None) -> dict:
         }
         for section in config.sections()
     }
+
+    #ToDo Redo without dummy way
+    params['STRUCTURE']['size'] = config.getint('STRUCTURE', 'size')
 
     return params
