@@ -32,19 +32,12 @@ def _generate_config() -> None:
     GLOBAL_PATH = Path.cwd().parent
     MODELS_PATH = GLOBAL_PATH / 'models'
     config = ConfigParser()
-    config.add_section('SOLVER')
-    config['SOLVER']['wavelength'] = '1e-09'
 
-    config.add_section('STRUCTURE')
-    config['STRUCTURE']['size'] = '12'
-    config['STRUCTURE']['period'] = '425e-09'
-    
-    config.add_section('UNIT CELL')
-    config['UNIT CELL']['h_disk'] = '150e-9'
-    config['UNIT CELL']['h_spacer'] = '150e-9'
-    
-    config.add_section('BOX')
-    config['BOX']['z_min'] = '-3e-09'
+    config['SOLVER'] = {'wavelength': '850e-09'}
+    config['STRUCTURE'] = {'size': '10', 'period': '425e-09', 'n_levels': '2', 'focal_length': '4e-6'}
+    config['UNIT CELL'] = {'h_disk': '150e-9', 'h_spacer': '38e-9'}
+    config['MATERIALS'] = {'disk': 'Si (Silicon) - Palik', 'spacer': '1.5', 'substrate': '1.5'}
+    config['BOX'] = {'z_min': '-3e-6', 'z_margin': '3e-6', 'mesh_accuracy': '3'}
 
     with open(MODELS_PATH / 'default_model_config.ini', 'w') as config_file:
         config.write(config_file)
@@ -62,7 +55,7 @@ def read_config(config_path = None) -> dict:
 
     params = {
         section: {
-            key: float(value)
+            key: value if section == 'MATERIALS' else float(value)
             for key, value in config[section].items()
         }
         for section in config.sections()
@@ -70,5 +63,6 @@ def read_config(config_path = None) -> dict:
 
     #ToDo Redo without dummy way
     params['STRUCTURE']['size'] = config.getint('STRUCTURE', 'size')
+    params['STRUCTURE']['n_levels'] = config.getint('STRUCTURE', 'n_levels')
 
     return params
