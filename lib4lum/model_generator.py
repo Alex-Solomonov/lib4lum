@@ -1,6 +1,30 @@
 from .dependencies import *
 from . import phase_profiles
 
+def _load_nk(path):
+    '''
+    Read a [wl_um, value] CSV for dispersion
+    '''
+    d = np.genfromtxt(path, delimiter=',', encoding='utf-8-sig')
+    d = d[~np.isnan(d).any(axis=1)] # drops headers
+    return d[:, 0], d[:, 1]
+
+def _register_mat(client, n_csv: str, k_csv: str | None = None, name: str | None = None, mat_dir: str | Path | None = None):
+    '''
+    Register an isotropic (n, k) material from distinct csv files 
+    '''
+    base = Path(mat_dir or '.')
+    wl_um, n = _load_nk(base / n_csv.strip())
+    k = np.interp(wl_um, *_load_nk(base / k_csv.strip())) if k_csv else np.zeros_like(n)
+    name = name if name else Path(n_csv.strip()).stem # drops spaghetti
+    data = np.column_stack([299792458.0 / (wl_um * 1e-6), (n + 1j * k) ** 2])
+    m = client.addmaterial("Sampled data")
+    client.setmaterial(m, "name", name)
+    client.setmaterial(name, "max coefficients", 6)
+    client.setmaterial(name, "tolerance", 0.01)
+    client.setmaterial(name, "sampled data", data[np.argsort(data[:, 0].real)])
+    return name
+
 def generate_model_set(N : int, 
                        F : float, 
                        wl : float,
@@ -10,7 +34,10 @@ def generate_model_set(N : int,
                        h_spacer : float,
                        substrate_n : float,
                        z_min: float,
-                       z_margin: float) -> None:
+                       z_margin: float,
+                       mesh_accuracy: int | None = None,
+                       materials: dict | None = None,
+                       materials_dir: str | Path | None = None) -> None:
     r'''
     Generates a set of disordered metasurface lens models for all available
     disorder realizations and saves them as simulation files.
@@ -54,6 +81,16 @@ def generate_model_set(N : int,
         z_margin: float
             Headroom above the focus (consider z_max = F + z_margin).
 
+        mesh_accuracy: int | None
+            FDTD mesh accuracy (1-8). None leaves the engine default.
+
+        materials: dict | None
+            {'disk': builtin name | "n.csv,k.csv,[name]", 'spacer': index}.
+            None keeps the built-in Si / index-1.5 layers.
+
+        materials_dir: str | Path | None
+            Directory the CSV material files resolve against.
+
     Returns:
         None
     '''
@@ -83,7 +120,8 @@ def generate_model_set(N : int,
 
             build_model(radii=radii, X = X_etalon, Y = Y_etalon, wl=wl, period=period,
                 h_disk=h_disk, h_spacer=h_spacer, save_path=str(clean_path / (str(int(seed))+'.fsp')),
-                substrate_n=substrate_n, monitor_z_min=z_min, monitor_z_max=z_max, monitor_z_focal=F)
+                substrate_n=substrate_n, monitor_z_min=z_min, monitor_z_max=z_max, monitor_z_focal=F,
+                mesh_accuracy=mesh_accuracy, materials=materials, materials_dir=materials_dir)
 
 
 def design_lens(N : int, F : float, wl : float, period : float, size = int):
@@ -138,6 +176,9 @@ def build_model(
     source_span: float = 0.0,
     polarization: str = 'x',
     mesh_dx: float | None = None,
+    mesh_accuracy: int | None = None,
+    materials: dict | None = None,
+    materials_dir: str | Path | None = None,
     monitor_z_min: float = -4e-06,
     monitor_z_max: float = 4e-06,
     monitor_z_focal: float | None = None,
@@ -159,6 +200,9 @@ def build_model(
         source_span: Source wavelength span.
         polarization: Source polarization. 'x', 'y', or 'xy'.
         mesh_dx: Mesh size. None means Lumerical default.
+        mesh_accuracy: FDTD mesh accuracy (1-8). None leaves the engine default.
+        materials: {'disk': builtin name | "n.csv,k.csv,[name]", 'spacer': index}. None keeps Si / 1.5.
+        materials_dir: Directory the CSV material files resolve against. None -> cwd.
         monitor_z_min: Monitor and solver z min.
         monitor_z_max: Monitor and solver z max.
         monitor_z_focal: z position for transverse Monitor Z. None means skip Monitor Z.
@@ -222,6 +266,9 @@ def build_model(
             solver.dy = mesh_dx
             solver.dz = mesh_dx
 
+        if mesh_accuracy is not None:
+            solver.mesh_accuracy = mesh_accuracy
+
         # Substrate
         if substrate_n is not None:
             client.addrect(x_min=-bound, x_max=bound,
@@ -248,6 +295,13 @@ def build_model(
         client.putv('h_s', h_spacer)
         client.putv('N_sq', n*n)
 
+        disk_mat = (materials or {}).get('disk', 'Si (Silicon) - Palik')
+        if '.csv' in str(disk_mat).lower():
+            parts = [s.strip() for s in str(disk_mat).split(',')]   # n_csv[, k_csv[, name]]
+            disk_mat = _register_mat(client, *parts, mat_dir=materials_dir)
+        client.putv('disk_mat', disk_mat)
+        client.putv('spacer_n', float((materials or {}).get('spacer', 1.5)))
+
         script = """
 addstructuregroup; set("name", "Bottom_disk");
 addstructuregroup; set("name", "Spacer");
@@ -259,7 +313,7 @@ for(i=1:N_sq) {
         set("z min", 0); set("z max", h_d);
         set("radius", R_arr(i));
         set("name", "Bot_disk_" + num2str(i));
-        set("material", "Si (Silicon) - Palik");
+        set("material", disk_mat);
         addtogroup("Bottom_disk");
 
         addcircle;
@@ -267,7 +321,7 @@ for(i=1:N_sq) {
         set("z min", h_d); set("z max", h_d + h_s);
         set("radius", R_arr(i));
         set("name", "Spacer_" + num2str(i));
-        set("index", 1.5);
+        set("index", spacer_n);
         addtogroup("Spacer");
 
         addcircle;
@@ -275,7 +329,7 @@ for(i=1:N_sq) {
         set("z min", h_d + h_s); set("z max", 2*h_d + h_s);
         set("radius", R_arr(i));
         set("name", "Top_disk_" + num2str(i));
-        set("material", "Si (Silicon) - Palik");
+        set("material", disk_mat);
         addtogroup("Top_disk");
 }
 """
