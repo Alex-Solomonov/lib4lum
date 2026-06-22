@@ -8,8 +8,10 @@ def generate_model_set(N : int,
                        size : int,
                        h_disk : float,
                        h_spacer : float,
-                       substrate_n : float) -> None:
-    '''
+                       substrate_n : float,
+                       z_min: float,
+                       z_margin: float) -> None:
+    r'''
     Generates a set of disordered metasurface lens models for all available
     disorder realizations and saves them as simulation files.
     The function first computes the ideal (reference) lens geometry using
@@ -46,6 +48,12 @@ def generate_model_set(N : int,
         substrate_n: float
             Refractive index of the substrate material.
 
+        z_min: float
+            Lower boundary of monitors.
+
+        z_margin: float
+            Headroom above the focus (consider z_max = F + z_margin).
+
     Returns:
         None
     '''
@@ -54,6 +62,8 @@ def generate_model_set(N : int,
     MODELS_PATH = GLOBAL_PATH / 'models'  
     
     radii_etalon, X_etalon, Y_etalon = design_lens(N = N, F = F, wl = wl, period = period, size = size)
+    z_max = F + z_margin
+
     folder_list = [x for x in MODELS_PATH.iterdir() if x.is_dir()]
     
     for folder_path in folder_list:
@@ -73,7 +83,7 @@ def generate_model_set(N : int,
 
             build_model(radii=radii, X = X_etalon, Y = Y_etalon, wl=wl, period=period,
                 h_disk=h_disk, h_spacer=h_spacer, save_path=str(clean_path / (str(int(seed))+'.fsp')),
-                substrate_n=substrate_n)
+                substrate_n=substrate_n, monitor_z_min=z_min, monitor_z_max=z_max, monitor_z_focal=F)
 
 
 def design_lens(N : int, F : float, wl : float, period : float, size = int):
