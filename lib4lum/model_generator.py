@@ -1,5 +1,7 @@
 from .dependencies import *
 from . import phase_profiles
+from .deploy import read_config
+import shutil
 
 def _load_nk(path):
     '''
@@ -11,7 +13,7 @@ def _load_nk(path):
 
 def _register_mat(client, n_csv: str, k_csv: str | None = None, name: str | None = None, mat_dir: str | Path | None = None):
     '''
-    Register an isotropic (n, k) material from distinct csv files 
+    Register an isotropic (n, k) material from distinct csv files
     '''
     base = Path(mat_dir or '.')
     wl_um, n = _load_nk(base / n_csv.strip())
@@ -25,222 +27,157 @@ def _register_mat(client, n_csv: str, k_csv: str | None = None, name: str | None
     client.setmaterial(name, "sampled data", data[np.argsort(data[:, 0].real)])
     return name
 
-def generate_model_set(N : int, 
-                       F : float, 
-                       wl : float,
-                       period : float, 
-                       size : int,
-                       h_disk : float,
-                       h_spacer : float,
-                       substrate_n : float,
-                       z_min: float,
-                       z_margin: float,
-                       mesh_accuracy: int | None = None,
-                       materials: dict | None = None,
+def generate_model_set(config_path: str | Path | None = None,
                        materials_dir: str | Path | None = None) -> None:
-    r'''
-    Generates a set of disordered metasurface lens models for all available
-    disorder realizations and saves them as simulation files.
-    The function first computes the ideal (reference) lens geometry using
-    `design_lens()`. It then scans all disorder directories in the `models\clean`
-    folder, loads the corresponding disorder magnitude (`eta`) and realization
-    seeds from `!seeds.txt`, and generates perturbed lens geometries by applying
-    independent random radius variations within the range
-    [(1 - eta) * r, (1 + eta) * r].
-    Each perturbed structure is exported as an FDTD simulation model (`.fsp`)
-    into the corresponding `clean` subdirectory.
+    '''
+    Build the metasurface model set described by the ini and write one .fsp
+    per realization seed, for every folder under models/.
+
+    Reads the config once; for each folder it builds the quasi-phase map for the
+    configured profile (lens/deflector deterministic; random seeded per
+    realization), looks the radii up from [RADII], writes one clean/<seed>.fsp
+    per seed, and snapshots the ini beside !seeds.txt so a model reproduces from
+    seed + that snapshot.
 
     Args:
-        N: int
-            Number of discrete radius values used in the lens design.
-
-        F: float
-            Focal length of the metalens.
-
-        wl: float
-            Operating wavelength.
-
-        period: float
-            Lattice period of the metasurface.
-
-        size: int
-            Number of unit cells along one side of the lens.
-
-        h_disk: float
-            Height of the nanodisk resonators.
-
-        h_spacer: float
-            Thickness of the spacer layer.
-
-        substrate_n: float
-            Refractive index of the substrate material.
-
-        z_min: float
-            Lower boundary of monitors.
-
-        z_margin: float
-            Headroom above the focus (consider z_max = F + z_margin).
-
-        mesh_accuracy: int | None
-            FDTD mesh accuracy (1-8). None leaves the engine default.
-
-        materials: dict | None
-            {'disk': builtin name | "n.csv,k.csv,[name]", 'spacer': index}.
-            None keeps the built-in Si / index-1.5 layers.
-
-        materials_dir: str | Path | None
-            Directory the CSV material files resolve against.
+        config_path: Path to the .ini. None -> models/default_model_config.ini.
+        materials_dir: Directory the [MATERIALS] CSV files resolve against
+            (eval-side; not part of the reproducible config). None -> cwd.
 
     Returns:
         None
+
+    Raises:
+        ValueError: If the lens focus would fall outside the FDTD domain.
     '''
-    
     GLOBAL_PATH = Path.cwd().parent
-    MODELS_PATH = GLOBAL_PATH / 'models'  
-    
-    radii_etalon, X_etalon, Y_etalon = design_lens(N = N, F = F, wl = wl, period = period, size = size)
-    z_max = F + z_margin
+    MODELS_PATH = GLOBAL_PATH / 'models'
+    if config_path is None:
+        config_path = MODELS_PATH / 'default_model_config.ini'
+        print(f"No config provided, defaulting to {config_path}")
+
+    p = read_config(config_path)
+    profile = p['PROFILE']
+    n = p['STRUCTURE']['n_levels']
+    wl = p['SOLVER']['wavelength']
+    period = p['STRUCTURE']['period']
+    size = p['STRUCTURE']['size']
+    h_disk = p['UNIT CELL']['h_disk']
+    h_spacer = p['UNIT CELL']['h_spacer']
+    radii = p['RADII']['radii']
+    z_extent = p['BOX']['z_extent']
+
+    z_max = 2 * h_disk + h_spacer + z_extent
+    z_focal = profile['focal_length'] if profile['type'] == 'lens' else None
+    if z_focal is not None and z_focal >= z_max:
+        raise ValueError(f"lens focus z={z_focal} is outside the domain (z_max={z_max}); raise z_extent")
 
     folder_list = [x for x in MODELS_PATH.iterdir() if x.is_dir()]
-    
     for folder_path in folder_list:
         clean_path = folder_path / 'clean'
         print('Reading {}'.format(folder_path))
-        data = np.loadtxt(folder_path / '!seeds.txt')
-
-        eta = data[0]
-        seeds = data[1:]
+        seeds = np.loadtxt(folder_path / '!seeds.txt')[1:]
+        shutil.copy(config_path, folder_path / 'model_config.ini') # snapshot for reproducibility
 
         for seed in tqdm(seeds):
-            rng = np.random.default_rng(int(seed))
-            # (-eta, eta) -> 1+(-eta, eta)
-            floating_error = rng.uniform(low = 1-eta, high = 1+eta, size = np.shape(radii_etalon))
-            
-            radii = floating_error * radii_etalon
+            seed = int(seed)
+            quasi = build_quasi(profile, wl, period, size, n, seed)
+            radii_etalon = phase_profiles.get_radii(quasi, radii)
+            build_model(radii_etalon, str(clean_path / f'{seed}.fsp'),
+                        config_path=config_path, materials_dir=materials_dir)
 
-            build_model(radii=radii, X = X_etalon, Y = Y_etalon, wl=wl, period=period,
-                h_disk=h_disk, h_spacer=h_spacer, save_path=str(clean_path / (str(int(seed))+'.fsp')),
-                substrate_n=substrate_n, monitor_z_min=z_min, monitor_z_max=z_max, monitor_z_focal=F,
-                mesh_accuracy=mesh_accuracy, materials=materials, materials_dir=materials_dir)
-
-
-def design_lens(N : int, F : float, wl : float, period : float, size = int):
+def build_quasi(profile: dict, wl: float, period: float, size: int, n: int, seed: int) -> npt.NDArray[np.int_]:
     '''
-    Generates the discretized geometry of a metalens based on its target
-    focal distance.
-    The function computes the ideal lens phase distribution, quantizes it
-    into a finite number of phase levels, and maps each quantized phase value
-    to the corresponding resonator radius. The resulting radius grid and
-    coordinate arrays define the lens layout.
+    Build the quasi-phase map for the configured profile.
 
     Args:
-        N: float
-            Number of discrete phase levels used for quantization.
-
-        F: float
-            Focal length of the lens.
-
-        wl: float
-            Operating wavelength.
-
-        period: float
-            Lattice period of the metasurface.
-
-        size: int
-            Number of unit cells along one side of the lens.
-
-    Returns:
-        radii_grid: 
-            2D array of resonator radii corresponding to the
-            quantized phase profile.
-
-        X: 
-            2D array of x-coordinates.
-        Y: 
-            2D array of y-coordinates.
-    '''
-    phase, X, Y = phase_profiles.lens_profile(F = F, wl = wl, period = period, size = size)
-    phase_q = phase_profiles.quantize(phase, n_levels=N)
-    radii_grid = phase_profiles.get_radii(phase_q)
-    return radii_grid, X, Y
-
-def build_model(
-    radii: npt.NDArray[np.float64],
-    X : npt.NDArray[np.float64],
-    Y : npt.NDArray[np.float64],
-    wl: float, period: float,
-    h_disk: float, h_spacer: float,
-    save_path: str,
-    substrate_n: float | None = None,
-    source_wl: float | None = None,
-    source_span: float = 0.0,
-    polarization: str = 'x',
-    mesh_dx: float | None = None,
-    mesh_accuracy: int | None = None,
-    materials: dict | None = None,
-    materials_dir: str | Path | None = None,
-    monitor_z_min: float = -4e-06,
-    monitor_z_max: float = 4e-06,
-    monitor_z_focal: float | None = None,
-    position_offsets: npt.NDArray[np.float64] | None = None,
-    lateral_bound: float | None = None,
-    refine_y0_plane: bool = False,
-    refine_y0_dx_wl: float = 0.01,
-) -> str:
-    """Builds a Lumerical FDTD model from a precomputed radii grid.
-    Args:
-        radii: 2D array of disk radii in meters, shape (2*size+1, 2*size+1).
+        profile: The [PROFILE] config section. Always has 'type'; a lens uses
+            'focal_length', a deflector uses 'theta_x'/'theta_y' (default 0.0),
+            random/custom use neither.
         wl: Operating wavelength in meters.
         period: Lattice period in meters.
-        h_disk: Disk height in meters.
-        h_spacer: Spacer height in meters.
-        save_path: Path to save .fsp file.
-        substrate_n: Substrate refractive index. None means no substrate.
-        source_wl: Source wavelength. Defaults to wl.
-        source_span: Source wavelength span.
-        polarization: Source polarization. 'x', 'y', or 'xy'.
-        mesh_dx: Mesh size. None means Lumerical default.
-        mesh_accuracy: FDTD mesh accuracy (1-8). None leaves the engine default.
-        materials: {'disk': builtin name | "n.csv,k.csv,[name]", 'spacer': index}. None keeps Si / 1.5.
-        materials_dir: Directory the CSV material files resolve against. None -> cwd.
-        monitor_z_min: Monitor and solver z min.
-        monitor_z_max: Monitor and solver z max.
-        monitor_z_focal: z position for transverse Monitor Z. None means skip Monitor Z.
-        position_offsets: Per-pillar (dx, dy) displacements in meters; shape (n, n, 2).
-            None -> use regular lattice positions (default; backward compatible).
-            Used for positional-disorder ensembles per Wan et al. APL 2025 eq.P2.3/4
-            (delta_x = Delta * xi * period, Delta ~ U[-0.5, 0.5]).
-        lateral_bound: Half-width of the FDTD region in x and y (meters).
-            None (default) uses (size+2)*period — keeps prior behavior.
-            Larger values widen the vacuum margin between the lens edge and the
-            lateral PMLs, mitigating PML-reflection artifacts at high NA.
-        refine_y0_plane: If True, add a Lumerical mesh override on the y=0 plane
-            (the Monitor Y slice) with cell size `refine_y0_dx_wl * wl` in all
-            three directions and `set equivalent index` true (eq_x=eq_z=2,
-            eq_y=1). Default False — keeps prior behavior. Useful at high NA to
-            resolve the elongated Richards–Wolf focal spot along x: at NA ≈ 0.9
-            and mesh_accuracy=3 default, FWHM_x is over-estimated by ~10% due to
-            coarse cells on the y=0 diagnostic plane; refining there drops the
-            measured FWHM_x / FWHM_y ratio from 1.75 to 1.60 for the F=2 µm
-            binary Huygens lens.
-        refine_y0_dx_wl: Mesh cell size in wavelength units when `refine_y0_plane`
-            is True. Default 0.01 = wl/100 — matches the colleague's saved .fsp.
+        size: Number of cells from the centre to the edge.
+        n: Number of quantisation levels.
+        seed: Realization seed; used only by the random profile.
 
     Returns:
-        The save_path.
+        Integer quasi-phase map of shape (2*size+1, 2*size+1), values in [0, n).
+
+    Raises:
+        ValueError: For an unknown profile type ('custom' maps are caller-supplied).
+    '''
+    kind = profile['type']
+    if kind == 'lens':
+        return phase_profiles.lens_profile(profile['focal_length'], wl, period, size, n)
+    if kind == 'deflector':
+        return phase_profiles.deflector_profile(
+            profile.get('theta_x', 0.0), profile.get('theta_y', 0.0), wl, period, size, n)
+    if kind == 'random':
+        return phase_profiles.random_profile(n, size, seed)
+    raise ValueError(f"profile type {kind!r} not built here (custom maps are caller-supplied)")
+
+def build_model(radii: npt.NDArray[np.float64], save_path: str,
+                config_path: str | Path | None = None,
+                materials_dir: str | Path | None = None,
+                source_wl: float | None = None,
+                source_span: float = 0.0,
+                polarization: str = 'x',
+                mesh_dx: float | None = None,
+                position_offsets: npt.NDArray[np.float64] | None = None,
+                lateral_bound: float | None = None,
+                refine_y0_plane: bool = False,
+                refine_y0_dx_wl: float = 0.01) -> str:
+    """Build a Lumerical FDTD model from a precomputed radii grid + the ini.
+
+    Wavelength, period, layer heights, materials and box are read from the
+    config; the remaining kwargs are Alex Solomonov's optional source/mesh/
+    positional knobs, all neutral (no-op) by default.
+
+    Args:
+        radii: 2D disk-radii grid (m), shape (2*size+1, 2*size+1).
+        save_path: Where to write the .fsp.
+        config_path: Path to the .ini. None -> models/default_model_config.ini.
+        materials_dir: Directory the [MATERIALS] CSV files resolve against. None -> cwd.
+        source_wl: Source centre wavelength (m). None -> the ini's wavelength.
+        source_span: Source wavelength span (m). 0 -> single wavelength.
+        polarization: Source polarization, 'x' | 'y' | 'xy'.
+        mesh_dx: Uniform mesh size (m). None -> Lumerical adaptive mesh.
+        position_offsets: Per-pillar (dx, dy) displacements (m), shape (n, n, 2).
+            None -> regular lattice (no positional disorder). Per Wan et al. APL 2025.
+        lateral_bound: FDTD half-width in x/y (m). None -> (size+2)*period.
+        refine_y0_plane: Add a y=0 mesh override for FWHM_x accuracy. False -> off.
+        refine_y0_dx_wl: Mesh cell size (in wl units) when refine_y0_plane is True.
+
+    Returns:
+        save_path.
+
+    Raises:
+        ValueError: On invalid polarization or a position_offsets shape mismatch.
     """
     if polarization not in ('x', 'y', 'xy'):
         raise ValueError(f"polarization must be 'x', 'y', or 'xy'; got {polarization!r}")
 
+    p = read_config(config_path)
+    wl = p['SOLVER']['wavelength']
+    period = p['STRUCTURE']['period']
+    h_disk = p['UNIT CELL']['h_disk']
+    h_spacer = p['UNIT CELL']['h_spacer']
+    materials = p['MATERIALS']
+    substrate_n = float(materials['substrate'])
+    mesh_accuracy = int(p['BOX']['mesh_accuracy'])
+    monitor_z_min = p['BOX']['z_min']
+    monitor_z_max = 2 * h_disk + h_spacer + p['BOX']['z_extent']
+    monitor_z_focal = p['PROFILE']['focal_length'] if p['PROFILE']['type'] == 'lens' else None
+
     n = radii.shape[0]
-    size = (n - 1)//2
-    # Grid
+    size = (n - 1) // 2
+    X, Y = phase_profiles.make_grid(size, period)
     if position_offsets is not None:
         if position_offsets.shape != (n, n, 2):
             raise ValueError(f"position_offsets must have shape ({n},{n},2); got {position_offsets.shape}")
-        X += position_offsets[..., 0]
-        Y += position_offsets[..., 1]
-    bound = lateral_bound if lateral_bound is not None else (size + 2)*period
+        X = X + position_offsets[..., 0]
+        Y = Y + position_offsets[..., 1]
+    bound = lateral_bound if lateral_bound is not None else (size + 2) * period
 
     if source_wl is None:
         source_wl = wl
@@ -287,7 +224,7 @@ def build_model(
             source.center_wavelength = source_wl
             source.wavelength_span = source_span
 
-        # Structure groups — batched via Lumerical script (single IPC call)
+        # Structure groups - batched via Lumerical script (single IPC call)
         client.putv('X_arr', X.flatten())
         client.putv('Y_arr', Y.flatten())
         client.putv('R_arr', radii.flatten())
@@ -356,7 +293,7 @@ for(i=1:N_sq) {
             monitor.y_max = bound
             monitor.z = monitor_z_focal
 
-        # Optional y=0 mesh override — refines FWHM_x sampling at high NA.
+        # Optional y=0 mesh override - refines FWHM_x sampling at high NA.
         # Added after monitors so the auto-mesh recomputes only once.
         if refine_y0_plane:
             dx = refine_y0_dx_wl * wl
