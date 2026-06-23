@@ -34,16 +34,41 @@ def _generate_config() -> None:
     config = ConfigParser()
 
     config['SOLVER'] = {'wavelength': '850e-09'}
-    config['STRUCTURE'] = {'size': '10', 'period': '425e-09', 'n_levels': '2', 'focal_length': '4e-6'}
+    config['STRUCTURE'] = {'size': '10', 'period': '425e-09', 'n_levels': '2'}
     config['UNIT CELL'] = {'h_disk': '150e-9', 'h_spacer': '38e-9'}
     config['MATERIALS'] = {'disk': 'Si (Silicon) - Palik', 'spacer': '1.5', 'substrate': '1.5'}
-    config['BOX'] = {'z_min': '-3e-6', 'z_margin': '3e-6', 'mesh_accuracy': '3'}
+    config['BOX'] = {'z_min': '-3e-6', 'z_extent': '10e-6', 'mesh_accuracy': '3'}
+    config['PROFILE'] = {'type': 'lens', 'focal_length': '4e-6'}
+    config['RADII'] = {'radii': '1.17e-7, 1.62e-7'}
 
     with open(MODELS_PATH / 'default_model_config.ini', 'w') as config_file:
         config.write(config_file)
 
-def read_config(config_path = None) -> dict:
+def _coerce(value: str) -> float | str:
     '''
+    Parse config values cleanly
+    '''
+    try:
+        return float(value)
+    except ValueError:
+        return value.strip()
+
+def read_config(config_path: str | Path | None = None) -> dict:
+    '''
+    Read the model config into a nested {section: {key: value}} dict.
+
+    Numeric values become floats; STRUCTURE.size / n_levels are ints;
+    PROFILE.type stays a string; RADII.radii is parsed to a list[float].
+
+    Args:
+        config_path: Path to the .ini. None -> models/default_model_config.ini
+            (cwd-relative, matching run()).
+
+    Returns:
+        The parsed config.
+
+    Raises:
+        ValueError: If the number of [RADII] radii != STRUCTURE.n_levels.
     '''
     if config_path is None:
         GLOBAL_PATH = Path.cwd().parent
@@ -55,14 +80,20 @@ def read_config(config_path = None) -> dict:
 
     params = {
         section: {
-            key: value if section == 'MATERIALS' else float(value)
+            key: _coerce(value)
             for key, value in config[section].items()
         }
         for section in config.sections()
     }
-
-    #ToDo Redo without dummy way
     params['STRUCTURE']['size'] = config.getint('STRUCTURE', 'size')
     params['STRUCTURE']['n_levels'] = config.getint('STRUCTURE', 'n_levels')
+
+    radii = [float(r) for r in config['RADII']['radii'].split(',')]
+    if len(radii) != params['STRUCTURE']['n_levels']:
+        raise ValueError(
+            f"[RADII] has {len(radii)} radii but [STRUCTURE] n_levels = "
+            f"{params['STRUCTURE']['n_levels']}"
+        )
+    params['RADII']['radii'] = radii
 
     return params
