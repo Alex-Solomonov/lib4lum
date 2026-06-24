@@ -27,25 +27,20 @@ def _register_mat(client, n_csv: str, k_csv: str | None = None, name: str | None
     client.setmaterial(name, "sampled data", data[np.argsort(data[:, 0].real)])
     return name
 
-def generate_model_set(config_path: str | Path | None = None,
-                       materials_dir: str | Path | None = None) -> None:
+def generate_model(config_path: str | Path | None = None,
+                       save_path: str | Path | None = None,
+                       materials_dir: str | Path | None = None) -> str:
     '''
-    Build the metasurface model set described by the ini and write one .fsp
-    per realization seed, for every folder under models/.
-
-    Reads the config once; for each folder it builds the quasi-phase map for the
-    configured profile (lens/deflector deterministic; random seeded per
-    realization), looks the radii up from [RADII], writes one clean/<seed>.fsp
-    per seed, and snapshots the ini beside !seeds.txt so a model reproduces from
-    seed + that snapshot.
+    Build a metasurface model described by the ini
 
     Args:
         config_path: Path to the .ini. None -> models/default_model_config.ini.
+        save_path: Where to write the .fsp. None -> <config path>.fsp.
         materials_dir: Directory the [MATERIALS] CSV files resolve against
             (eval-side; not part of the reproducible config). None -> cwd.
 
     Returns:
-        None
+        (str) save_path
 
     Raises:
         ValueError: If the lens focus would fall outside the FDTD domain.
@@ -55,6 +50,7 @@ def generate_model_set(config_path: str | Path | None = None,
     if config_path is None:
         config_path = MODELS_PATH / 'default_model_config.ini'
         print(f"No config provided, defaulting to {config_path}")
+    config_path = Path(config_path)
 
     p = read_config(config_path)
     profile = p['PROFILE']
@@ -72,19 +68,39 @@ def generate_model_set(config_path: str | Path | None = None,
     if z_focal is not None and z_focal >= z_max:
         raise ValueError(f"lens focus z={z_focal} is outside the domain (z_max={z_max}); raise z_extent")
 
-    folder_list = [x for x in MODELS_PATH.iterdir() if x.is_dir()]
-    for folder_path in folder_list:
-        clean_path = folder_path / 'clean'
-        print('Reading {}'.format(folder_path))
-        seeds = np.loadtxt(folder_path / '!seeds.txt')[1:]
-        shutil.copy(config_path, folder_path / 'model_config.ini') # snapshot for reproducibility
+    if save_path is None:
+        save_path = config_path.with_suffix('.fsp')
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        for seed in tqdm(seeds):
-            seed = int(seed)
-            quasi = build_quasi(profile, wl, period, size, n, seed)
-            radii_etalon = phase_profiles.get_radii(quasi, radii)
-            build_model(radii_etalon, str(clean_path / f'{seed}.fsp'),
-                        config_path=config_path, materials_dir=materials_dir)
+    quasi = build_quasi(profile, wl, period, size, n, profile['seed'])
+    radii_etalon = phase_profiles.get_radii(quasi, radii)
+    build_model(radii_etalon, str(save_path), config_path=str(config_path), materials_dir=materials_dir)
+    return str(save_path)
+
+
+def generate_model_set(config_paths: list[str | Path], out_dir: str | Path | None = None,
+                       materials_dir: str | Path | None = None) -> list[str]:
+    '''
+    Build one model per config -- batch over an arbitrary list of designs
+
+    Each config completely specifies each model, seed in [PROFILE] determines a realization
+
+    Args:
+        config_paths: The .ini paths, one per model
+        out_dir: Directory for .fsp files. Defaults to config directory, if not provided
+        materials_dir: [MATERIALS] csv dir.
+
+    Returns:
+        fsp paths in input order
+    '''
+    paths = []
+    for config_path in config_paths:
+        config_path = Path(config_path)
+        save_path = Path(out_dir) / f'{config_path.stem}.fsp' if out_dir is not None else None
+        paths.append(generate_model(config_path, save_path, materials_dir))
+    return paths
+
 
 def build_quasi(profile: dict, wl: float, period: float, size: int, n: int, seed: int) -> npt.NDArray[np.int_]:
     '''

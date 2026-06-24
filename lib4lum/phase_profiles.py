@@ -51,7 +51,9 @@ def lens_profile(F: float, wl: float, period: float, size: int, n: int) -> npt.N
         Integer quasi-phase map of shape (2*size+1, 2*size+1), values in [0, n).
     """
     X, Y = make_grid(size, period)
-    phase = -(np.sqrt(X**2 + Y**2 + F**2) - F) * 2 * np.pi / wl
+    # + sign = converging for this build's source/monitor geometry (FDTD-confirmed;
+    # the - sign diverges -- see the metasurface-phase-sign-convention note).
+    phase = (np.sqrt(X**2 + Y**2 + F**2) - F) * 2 * np.pi / wl
     return quantize(phase, n)
 
 
