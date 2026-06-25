@@ -8,10 +8,19 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     'UNIT CELL': {'h_disk': '150e-9', 'h_spacer': '38e-9'},
     'MATERIALS': {'disk': 'Si (Silicon) - Palik', 'spacer': '1.5', 'substrate': '1.5'},
     'BOX':       {'z_min': '-3e-6', 'z_extent': '10e-6', 'mesh_accuracy': '3'},
-    'PROFILE':   {'type': 'lens', 'focal_length': '4e-6', 'theta_x': '0.0', 'theta_y': '0.0', 'seed': '0'},
+    'PROFILE':   {'type': 'lens', 'focal_length': '4e-6', 'theta_x': '0.0', 'theta_y': '0.0'},
     'RADII':     {'radii': '1.17e-7, 1.62e-7'},
 }
 
+
+def _set_seed(config_path: str | Path, seed: int) -> None:
+    config = ConfigParser()
+    config.read(config_path)
+    if not config.has_section('PROFILE'):
+        config.add_section('PROFILE')
+    config['PROFILE']['seed'] = str(int(seed))
+    with open(config_path, 'w') as config_file:
+        config.write(config_file)
 
 def write_config(config_path: str | Path, overrides: dict[str, dict] | None = None) -> None:
     '''Write a model config .ini from the defaults, overriding section-by-section.
@@ -114,7 +123,7 @@ def read_config(config_path: str | Path | None = None) -> dict:
     }
     params['STRUCTURE']['size'] = config.getint('STRUCTURE', 'size')
     params['STRUCTURE']['n_levels'] = config.getint('STRUCTURE', 'n_levels')
-    params['PROFILE']['seed'] = config.getint('PROFILE', 'seed', fallback=0)
+    params['PROFILE']['seed'] = config.getint('PROFILE', 'seed', fallback=None)
 
     radii = [float(r) for r in config['RADII']['radii'].split(',')]
     if len(radii) != params['STRUCTURE']['n_levels']:

@@ -1,7 +1,7 @@
 from .dependencies import *
-from . import phase_profiles
-from .deploy import read_config
-import shutil
+from . import phase_profiles, seed_generator
+from .deploy import read_config, _set_seed
+
 
 def _load_nk(path):
     '''
@@ -29,7 +29,8 @@ def _register_mat(client, n_csv: str, k_csv: str | None = None, name: str | None
 
 def generate_model(config_path: str | Path | None = None,
                        save_path: str | Path | None = None,
-                       materials_dir: str | Path | None = None) -> str:
+                       materials_dir: str | Path | None = None,
+                       seed: int | None = None) -> str:
     '''
     Build a metasurface model described by the ini
 
@@ -38,6 +39,7 @@ def generate_model(config_path: str | Path | None = None,
         save_path: Where to write the .fsp. None -> <config path>.fsp.
         materials_dir: Directory the [MATERIALS] CSV files resolve against
             (eval-side; not part of the reproducible config). None -> cwd.
+        seed: Realization seed. None -> use [PROFILE] seed from the config.
 
     Returns:
         (str) save_path
@@ -73,7 +75,14 @@ def generate_model(config_path: str | Path | None = None,
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    quasi = build_quasi(profile, wl, period, size, n, profile['seed'])
+    if seed is None:
+        seed = profile['seed']
+    if seed is None:
+        seed = int(seed_generator.generate_seeds(1)[0])
+    if seed != profile['seed']:
+        _set_seed(config_path, seed)
+        profile['seed'] = seed
+    quasi = build_quasi(profile, wl, period, size, n, seed)
     radii_etalon = phase_profiles.get_radii(quasi, radii)
     build_model(radii_etalon, str(save_path), config_path=str(config_path), materials_dir=materials_dir)
     return str(save_path)
