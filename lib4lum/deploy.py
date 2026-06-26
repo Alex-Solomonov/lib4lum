@@ -1,5 +1,6 @@
 from pathlib import Path
 from configparser import ConfigParser
+from collections.abc import Iterable
 
 
 _DEFAULTS: dict[str, dict[str, str]] = {
@@ -9,37 +10,52 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     'MATERIALS': {'disk': 'Si (Silicon) - Palik', 'spacer': '1.5', 'substrate': '1.5'},
     'BOX':       {'z_min': '-3e-6', 'z_extent': '10e-6', 'mesh_accuracy': '3'},
     'PROFILE':   {'type': 'lens', 'focal_length': '4e-6', 'theta_x': '0.0', 'theta_y': '0.0'},
-    'RADII':     {'radii': '1.17e-7, 1.62e-7'},
+    'RADII':     {'radii': ''},
 }
 
 
-def _set_seed(config_path: str | Path, seed: int) -> None:
+def _set_seed(config_path: str | Path, seed: int | None = None, radii: Iterable[float] | None = None) -> None:
     config = ConfigParser()
     config.read(config_path)
-    if not config.has_section('PROFILE'):
-        config.add_section('PROFILE')
-    config['PROFILE']['seed'] = str(int(seed))
+    if seed is not None:
+        if not config.has_section('PROFILE'):
+            config.add_section('PROFILE')
+        config['PROFILE']['seed'] = str(int(seed))
+    if radii is not None:
+        if not config.has_section('RADII'):
+            config.add_section('RADII')
+        config['RADII']['radii'] = ', '.join(f'{r:.6e}' for r in radii)
     with open(config_path, 'w') as config_file:
         config.write(config_file)
 
-def write_config(config_path: str | Path, overrides: dict[str, dict] | None = None) -> None:
-    '''Write a model config .ini from the defaults, overriding section-by-section.
+def write_config(config_path: str | Path, **values: float | int | str | Iterable[float]) -> None:
+    '''Write a model config .ini, routing flat keyword values to their [SECTION].
 
-    The schema (sections + keys) is defined once in _DEFAULTS, so this writer and
-    read_config can never drift. Values are stringified, so callers may pass plain
-    floats/ints.
+    The schema (sections + keys) lives once in _DEFAULTS, so this writer and
+    read_config can never drift. Pass any subset of options as keywords; unprovided
+    ones keep their _DEFAULTS value. Omit 'seed' to let generate_model create one.
 
     Args:
         config_path: Destination .ini (parent dirs are created).
-        overrides: {section: {key: value}} merged over _DEFAULTS, e.g.
-            {'STRUCTURE': {'n_levels': 5},
-             'PROFILE': {'type': 'deflector', 'theta_x': 0.5236},
-             'RADII': {'radii': '1.1e-7, 1.2e-7, ...'}}.
+        **values: Config options keyed by ini name (section in brackets):
+            wavelength [SOLVER]; size, period, n_levels [STRUCTURE];
+            h_disk, h_spacer [UNIT CELL]; disk, spacer, substrate [MATERIALS];
+            z_min, z_extent, mesh_accuracy [BOX];
+            type, focal_length, theta_x, theta_y, seed [PROFILE];
+            radii [RADII] -- a float iterable (-> comma list) or a string.
 
-    Returns:
-        None.
+    Raises:
+        KeyError: If a key is not a recognised config option.
     '''
-    overrides = overrides or {}
+    section_of = {key: section for section, keys in _DEFAULTS.items() for key in keys}
+    overrides: dict[str, dict] = {}
+    for key, value in values.items():
+        if key not in section_of:
+            raise KeyError(f"unknown config key {key!r}; valid keys: {sorted(section_of)}")
+        if key == 'radii' and not isinstance(value, str):
+            value = ', '.join(f'{x:.6e}' for x in value)
+        overrides.setdefault(section_of[key], {})[key] = value
+
     config = ConfigParser()
     for section, defaults in _DEFAULTS.items():
         merged = dict(defaults)
@@ -125,12 +141,15 @@ def read_config(config_path: str | Path | None = None) -> dict:
     params['STRUCTURE']['n_levels'] = config.getint('STRUCTURE', 'n_levels')
     params['PROFILE']['seed'] = config.getint('PROFILE', 'seed', fallback=None)
 
-    radii = [float(r) for r in config['RADII']['radii'].split(',')]
-    if len(radii) != params['STRUCTURE']['n_levels']:
-        raise ValueError(
-            f"[RADII] has {len(radii)} radii but [STRUCTURE] n_levels = "
-            f"{params['STRUCTURE']['n_levels']}"
-        )
-    params['RADII']['radii'] = radii
-
+    radii = config.get('RADII', 'radii', fallback='').strip()
+    if radii:
+        radii = [float(r) for r in radii.split(',')]
+        if len(radii) != params['STRUCTURE']['n_levels']:
+            raise ValueError(
+                f"[RADII] has {len(radii)} radii but [STRUCTURE] n_levels = "
+                f"{params['STRUCTURE']['n_levels']}"
+            )
+        params['RADII']['radii'] = radii
+    else:
+        params['RADII']['radii'] = None
     return params

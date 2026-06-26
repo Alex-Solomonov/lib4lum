@@ -90,6 +90,7 @@ def random_profile(n: int, size: int, seed: int) -> npt.NDArray[np.int_]:
         Integer quasi-phase map of shape (2*size+1, 2*size+1), values in [0, n).
     """
     rng = np.random.default_rng(seed)
+    rng.integers(0, n, n) # burn n integers to avoid duplication of first n pixels with n radii
     return rng.integers(0, n, (2 * size + 1, 2 * size + 1))
 
 
@@ -104,3 +105,20 @@ def get_radii(quasi_map: npt.NDArray[np.int_], radii: list[float] | npt.NDArray[
         Radius array in meters, of the same shape as `quasi_map`.
     """
     return np.asarray(radii, dtype=np.float64)[quasi_map]
+
+def resolve_radii(r: npt.NDArray[np.float64], phase: npt.NDArray[np.float64], n: int, first: float) -> npt.NDArray[np.float64]:
+    '''
+    Args:
+        r: Lookup radii (m).
+        phase: Unwrapped arg(S21) (rad) at each radius; monotone (either direction).
+        n: Number of quasi-phase levels.
+        first: Random first phase in [0, 2*pi), shifting all level targets together.
+
+    Returns:
+        n radii (m), one per level, in level order.
+    '''
+    if phase[0] > phase[-1]:
+        r, phase = r[::-1], phase[::-1]
+    targets = first + 2 * np.pi * np.arange(n) / n
+    wrapped = phase.min() + np.mod(targets - phase.min(), 2 * np.pi)
+    return np.interp(wrapped, phase, r)

@@ -30,7 +30,8 @@ def _register_mat(client, n_csv: str, k_csv: str | None = None, name: str | None
 def generate_model(config_path: str | Path | None = None,
                        save_path: str | Path | None = None,
                        materials_dir: str | Path | None = None,
-                       seed: int | None = None) -> str:
+                       seed: int | None = None,
+                       phases: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None) -> str:
     '''
     Build a metasurface model described by the ini
 
@@ -40,6 +41,9 @@ def generate_model(config_path: str | Path | None = None,
         materials_dir: Directory the [MATERIALS] CSV files resolve against
             (eval-side; not part of the reproducible config). None -> cwd.
         seed: Realization seed. None -> use [PROFILE] seed from the config.
+        phases: (r, phase) arrays. If given, the n radii are resolved from
+            seed -> first phase -> lookup and stamped into [RADII]; otherwise [RADII]
+            must already hold n radii. The phase array is unwrapped, monotone.
 
     Returns:
         (str) save_path
@@ -79,9 +83,18 @@ def generate_model(config_path: str | Path | None = None,
         seed = profile['seed']
     if seed is None:
         seed = int(seed_generator.generate_seeds(1)[0])
-    if seed != profile['seed']:
-        _set_seed(config_path, seed)
-        profile['seed'] = seed
+    if phases is not None:
+        r_lut, phase_lut = phases
+        first = np.random.default_rng(seed).uniform(0, 2 * np.pi)
+        radii = phase_profiles.resolve_radii(r_lut, phase_lut, n, first)
+    elif radii is None:
+        raise ValueError("generate_model: pass phases=(r, phase) or fill [RADII] in the config")
+
+    new_seed = seed != profile['seed']
+    if new_seed or phases is not None:
+        _set_seed(config_path, seed=seed if new_seed else None, radii=radii if phases is not None else None)
+    profile['seed'] = seed
+
     quasi = build_quasi(profile, wl, period, size, n, seed)
     radii_etalon = phase_profiles.get_radii(quasi, radii)
     build_model(radii_etalon, str(save_path), config_path=str(config_path), materials_dir=materials_dir)
@@ -89,7 +102,7 @@ def generate_model(config_path: str | Path | None = None,
 
 
 def generate_model_set(config_paths: list[str | Path], out_dir: str | Path | None = None,
-                       materials_dir: str | Path | None = None) -> list[str]:
+                       materials_dir: str | Path | None = None, phases: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None) -> list[str]:
     '''
     Build one model per config -- batch over an arbitrary list of designs
 
@@ -107,7 +120,7 @@ def generate_model_set(config_paths: list[str | Path], out_dir: str | Path | Non
     for config_path in config_paths:
         config_path = Path(config_path)
         save_path = Path(out_dir) / f'{config_path.stem}.fsp' if out_dir is not None else None
-        paths.append(generate_model(config_path, save_path, materials_dir))
+        paths.append(generate_model(config_path, save_path, materials_dir, phases=phases))
     return paths
 
 
