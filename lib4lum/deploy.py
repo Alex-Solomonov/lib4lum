@@ -7,7 +7,7 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     'SOLVER':    {'wavelength': '850e-09'},
     'STRUCTURE': {'size': '10', 'period': '425e-09', 'n_levels': '2'},
     'UNIT CELL': {'h_disk': '150e-9', 'h_spacer': '38e-9'},
-    'MATERIALS': {'disk': 'Si (Silicon) - Palik', 'spacer': '1.5', 'substrate': '1.5'},
+    'MATERIALS': {'disk': 'Si (Silicon) - Palik', 'spacer': '1.5', 'substrate': ''},
     'BOX':       {'z_min': '-3e-6', 'z_extent': '10e-6', 'mesh_accuracy': '3'},
     'PROFILE':   {'type': 'lens', 'focal_length': '4e-6', 'theta_x': '0.0', 'theta_y': '0.0'},
     'RADII':     {'radii': ''},
@@ -152,4 +152,7 @@ def read_config(config_path: str | Path | None = None) -> dict:
         params['RADII']['radii'] = radii
     else:
         params['RADII']['radii'] = None
+    substrate = config.get('MATERIALS', 'substrate', fallback='').strip()
+    params['MATERIALS']['substrate'] = float(substrate) if substrate else None
+
     return params

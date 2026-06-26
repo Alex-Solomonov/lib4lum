@@ -201,7 +201,7 @@ def build_model(radii: npt.NDArray[np.float64], save_path: str,
     h_disk = p['UNIT CELL']['h_disk']
     h_spacer = p['UNIT CELL']['h_spacer']
     materials = p['MATERIALS']
-    substrate_n = float(materials['substrate'])
+    substrate_n = materials.get('substrate')
     mesh_accuracy = int(p['BOX']['mesh_accuracy'])
     monitor_z_min = p['BOX']['z_min']
     monitor_z_max = 2 * h_disk + h_spacer + p['BOX']['z_extent']
