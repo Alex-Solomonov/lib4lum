@@ -47,17 +47,6 @@ def deflector_profile(theta_x: float, theta_y: float, wl: float, period: float, 
     phase = -(X*np.sin(theta_x) + Y*np.sin(theta_y))*2*np.pi/wl
     return phase
 
-def binarize(phase: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Binarizes phase to {0, pi}.
-    Args:
-        phase: Phase array.
-
-    Returns:
-        A numpy array with values 0 or pi.
-    """
-    phase = np.angle(np.exp(1j*phase))
-    return np.where(phase >= 0, np.pi, 0.)
-
 def quantize(phase: npt.NDArray[np.float64], n_levels: int) -> npt.NDArray[np.float64]:
     """Quantizes phase to N evenly-spaced levels in [0, 2*pi).
 
