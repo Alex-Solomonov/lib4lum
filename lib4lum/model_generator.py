@@ -320,6 +320,8 @@ for(i=1:N_sq) {
     return
 
 def add_solver(client, params, **kwargs):
+    '''
+    '''
     solver = client.addfdtd(dimension = '3D',
                    x_min = params['BOX']['xy_min'],
                    x_max = params['BOX']['xy_max'],
@@ -336,3 +338,33 @@ def add_solver(client, params, **kwargs):
     if kwargs:
         for key, value in kwargs.items():
             solver[key] = value
+
+def add_source_plane(client, params, **kwargs):
+    '''
+    '''
+    source = client.addplane(x_min = params['BOX']['xy_min'],
+                             x_max = params['BOX']['xy_max'],
+                             y_min = params['BOX']['xy_min'],
+                             y_max = params['BOX']['xy_max'],
+                             z = params['SOURCE']['position']
+    )
+
+    source.center_wavelength = params['SOURCE']['wavelength']
+    source.wavelength_span = params['SOURCE']['span']
+
+    source.injection_axis = 'z-axis'
+
+    if params['SOURCE']['direction'] == 'FRWD' or \
+    params['SOURCE']['direction'] =='FWD' or \
+    params['SOURCE']['direction'] =='Forward':
+        direction = 'Forward'
+    else:
+        direction = 'Backward'
+    source.direction = direction
+
+    pol_angles = {'x': 0, 'y': 90}
+    source.polarization_angle = pol_angles[params['SOURCE']['polarization']]
+
+    if kwargs:
+        for key, value in kwargs.items():
+            source[key] = value
