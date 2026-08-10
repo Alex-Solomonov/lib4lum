@@ -47,6 +47,7 @@ def deflector_profile(theta_x: float, theta_y: float, wl: float, period: float, 
     phase = -(X*np.sin(theta_x) + Y*np.sin(theta_y))*2*np.pi/wl
     return phase
 
+
 def quantize(phase: npt.NDArray[np.float64], n_levels: int) -> npt.NDArray[np.float64]:
     """Quantizes phase to N evenly-spaced levels in [0, 2*pi).
 
@@ -67,12 +68,14 @@ def quantize(phase: npt.NDArray[np.float64], n_levels: int) -> npt.NDArray[np.fl
     return (shifted // step) * step
 
 
-### !!!TODO!!! Need normal interpolation method
-### Right now magic numbers
-def get_radii(phase : npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    phase_func = interpolate.interp1d([0, np.pi], [1.17004778e-07, 1.62533128e-07], fill_value = 'extrapolate')
-    return phase_func(phase)
-
+def get_unit(phase_train  : npt.NDArray[np.float64], 
+             radii_train  : npt.NDArray[np.float64],
+             phase_target : npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    '''
+    
+    '''
+    phase_function  = interpolate.interp1d(phase_train, radii_train, fill_value = 'extrapolate')
+    return phase_function(phase_target)
 
 
 if __name__ == '__main__':
