@@ -2,6 +2,7 @@ from .dependencies import *
 from . import phase_profiles
 from . import deploy
 
+
 def generate_model_set(N : int, 
                        F : float, 
                        wl : float,
@@ -77,7 +78,7 @@ def generate_model_set(N : int,
                 h_disk=h_disk, h_spacer=h_spacer, save_path=str(clean_path / (str(int(seed))+'.fsp')),
                 substrate_n=substrate_n, **kwards)
 
-
+#legacy method
 def design_lens(N : int, F : float, wl : float, period : float, size = int):
     '''
     Generates the discretized geometry of a metalens based on its target
@@ -117,7 +118,7 @@ def design_lens(N : int, F : float, wl : float, period : float, size = int):
     phase_q = phase_profiles.quantize(phase, n_levels=N)
     radii_grid = phase_profiles.get_radii(phase_q)
     return radii_grid, X, Y
-
+#legacy method
 def build_model(
     radii: npt.NDArray[np.float64],
     X : npt.NDArray[np.float64],
