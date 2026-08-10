@@ -1,5 +1,6 @@
 from .dependencies import *
 from . import phase_profiles
+from . import deploy
 
 def generate_model_set(N : int, 
                        F : float, 
@@ -8,7 +9,8 @@ def generate_model_set(N : int,
                        size : int,
                        h_disk : float,
                        h_spacer : float,
-                       substrate_n : float) -> None:
+                       substrate_n : float,
+                       **kwards) -> None:
     '''
     Generates a set of disordered metasurface lens models for all available
     disorder realizations and saves them as simulation files.
@@ -73,7 +75,7 @@ def generate_model_set(N : int,
 
             build_model(radii=radii, X = X_etalon, Y = Y_etalon, wl=wl, period=period,
                 h_disk=h_disk, h_spacer=h_spacer, save_path=str(clean_path / (str(int(seed))+'.fsp')),
-                substrate_n=substrate_n)
+                substrate_n=substrate_n, **kwards)
 
 
 def design_lens(N : int, F : float, wl : float, period : float, size = int):
@@ -135,7 +137,8 @@ def build_model(
     lateral_bound: float | None = None,
     refine_y0_plane: bool = False,
     refine_y0_dx_wl: float = 0.01,
-) -> str:
+    **kwargs
+    ) -> str:
     """Builds a Lumerical FDTD model from a precomputed radii grid.
     Args:
         radii: 2D array of disk radii in meters, shape (2*size+1, 2*size+1).
@@ -193,7 +196,7 @@ def build_model(
 
     # FDTD
     try:
-        client = lumapi.FDTD(hide = True)
+        client = lumapi.FDTD(**kwargs)
     except Exception as exc:
         raise RuntimeError(
             "Could not start Lumerical FDTD.\n"
@@ -315,3 +318,21 @@ for(i=1:N_sq) {
     finally:
         client.close()
     return
+
+def add_solver(client, params, **kwargs):
+    solver = client.addfdtd(dimension = '3D',
+                   x_min = params['BOX']['xy_min'],
+                   x_max = params['BOX']['xy_max'],
+                   y_min = params['BOX']['xy_min'],
+                   y_max = params['BOX']['xy_max'],
+                   z_min = params['BOX']['z_min'],
+                   z_max = params['BOX']['z_max'])
+    
+    solver.mesh_type = 'uniform'
+    solver.dx = params['SOLVER']['mesh_dx']
+    solver.dy = params['SOLVER']['mesh_dy']
+    solver.dz = params['SOLVER']['mesh_dz']
+
+    if kwargs:
+        for key, value in kwargs.items():
+            solver[key] = value
