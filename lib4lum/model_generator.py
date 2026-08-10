@@ -368,3 +368,36 @@ def add_source_plane(client, params, **kwargs):
     if kwargs:
         for key, value in kwargs.items():
             source[key] = value
+
+def add_monitor_profile(client, monitor_name, **kwargs):
+    '''
+    '''
+    x_min = client.getnamed('FDTD','x min')
+    x_max = client.getnamed('FDTD','x max')
+    y_min = client.getnamed('FDTD','y min')
+    y_max = client.getnamed('FDTD','y max')
+    z_min = client.getnamed('FDTD','z min')
+    z_max = client.getnamed('FDTD','z max')
+
+    match monitor_name:
+        case '2D Y':
+            monitor = client.addprofile(name='Monitor Y', monitor_type='2D Y-normal')
+            monitor.x_min = x_min
+            monitor.x_max = x_max
+            monitor.z_min = z_min
+            monitor.z_max = z_max
+
+        case '2D X':
+            monitor = client.addprofile(name='Monitor X', monitor_type='2D X-normal')
+            monitor.y_min = y_min
+            monitor.y_max = y_max
+            monitor.z_min = z_min
+            monitor.z_max = z_max
+
+        case _:
+            print('Unknown monitor')
+            
+
+    if kwargs:
+        for key, value in kwargs.items():
+            monitor[key] = value
