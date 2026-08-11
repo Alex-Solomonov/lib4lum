@@ -1,5 +1,7 @@
 from .dependencies import *
 from . import phase_profiles
+from . import deploy
+
 
 def generate_model_set(N : int, 
                        F : float, 
@@ -8,7 +10,8 @@ def generate_model_set(N : int,
                        size : int,
                        h_disk : float,
                        h_spacer : float,
-                       substrate_n : float) -> None:
+                       substrate_n : float,
+                       **kwards) -> None:
     '''
     Generates a set of disordered metasurface lens models for all available
     disorder realizations and saves them as simulation files.
@@ -73,9 +76,9 @@ def generate_model_set(N : int,
 
             build_model(radii=radii, X = X_etalon, Y = Y_etalon, wl=wl, period=period,
                 h_disk=h_disk, h_spacer=h_spacer, save_path=str(clean_path / (str(int(seed))+'.fsp')),
-                substrate_n=substrate_n)
+                substrate_n=substrate_n, **kwards)
 
-
+#legacy method
 def design_lens(N : int, F : float, wl : float, period : float, size = int):
     '''
     Generates the discretized geometry of a metalens based on its target
@@ -115,7 +118,7 @@ def design_lens(N : int, F : float, wl : float, period : float, size = int):
     phase_q = phase_profiles.quantize(phase, n_levels=N)
     radii_grid = phase_profiles.get_radii(phase_q)
     return radii_grid, X, Y
-
+#legacy method
 def build_model(
     radii: npt.NDArray[np.float64],
     X : npt.NDArray[np.float64],
@@ -135,7 +138,8 @@ def build_model(
     lateral_bound: float | None = None,
     refine_y0_plane: bool = False,
     refine_y0_dx_wl: float = 0.01,
-) -> str:
+    **kwargs
+    ) -> str:
     """Builds a Lumerical FDTD model from a precomputed radii grid.
     Args:
         radii: 2D array of disk radii in meters, shape (2*size+1, 2*size+1).
@@ -193,7 +197,7 @@ def build_model(
 
     # FDTD
     try:
-        client = lumapi.FDTD(hide = True)
+        client = lumapi.FDTD(**kwargs)
     except Exception as exc:
         raise RuntimeError(
             "Could not start Lumerical FDTD.\n"
@@ -315,3 +319,89 @@ for(i=1:N_sq) {
     finally:
         client.close()
     return
+
+def add_solver(client, params, **kwargs):
+    '''
+    '''
+    solver = client.addfdtd(dimension = '3D',
+                   x_min = params['BOX']['xy_min'],
+                   x_max = params['BOX']['xy_max'],
+                   y_min = params['BOX']['xy_min'],
+                   y_max = params['BOX']['xy_max'],
+                   z_min = params['BOX']['z_min'],
+                   z_max = params['BOX']['z_max'])
+    
+    solver.mesh_type = 'uniform'
+    solver.dx = params['SOLVER']['mesh_dx']
+    solver.dy = params['SOLVER']['mesh_dy']
+    solver.dz = params['SOLVER']['mesh_dz']
+
+    if kwargs:
+        for key, value in kwargs.items():
+            solver[key] = value
+
+def add_source_plane(client, params, **kwargs):
+    '''
+    '''
+    source = client.addplane(x_min = params['BOX']['xy_min'],
+                             x_max = params['BOX']['xy_max'],
+                             y_min = params['BOX']['xy_min'],
+                             y_max = params['BOX']['xy_max'],
+                             z = params['SOURCE']['position']
+    )
+
+    source.center_wavelength = params['SOURCE']['wavelength']
+    source.wavelength_span = params['SOURCE']['span']
+
+    source.injection_axis = 'z-axis'
+
+    if params['SOURCE']['direction'] == 'FRWD' or \
+    params['SOURCE']['direction'] =='FWD' or \
+    params['SOURCE']['direction'] =='Forward':
+        direction = 'Forward'
+    else:
+        direction = 'Backward'
+    source.direction = direction
+
+    pol_angles = {'x': 0, 'y': 90}
+    source.polarization_angle = pol_angles[params['SOURCE']['polarization']]
+
+    if kwargs:
+        for key, value in kwargs.items():
+            source[key] = value
+
+def add_monitor_profile(client, monitor_name, **kwargs):
+    '''
+    '''
+    x_min = client.getnamed('FDTD','x min')
+    x_max = client.getnamed('FDTD','x max')
+    y_min = client.getnamed('FDTD','y min')
+    y_max = client.getnamed('FDTD','y max')
+    z_min = client.getnamed('FDTD','z min')
+    z_max = client.getnamed('FDTD','z max')
+
+    match monitor_name:
+        case '2D Y':
+            monitor = client.addprofile(name='Monitor Y', monitor_type='2D Y-normal')
+            monitor.x_min = x_min
+            monitor.x_max = x_max
+            monitor.z_min = z_min
+            monitor.z_max = z_max
+
+        case '2D X':
+            monitor = client.addprofile(name='Monitor X', monitor_type='2D X-normal')
+            monitor.y_min = y_min
+            monitor.y_max = y_max
+            monitor.z_min = z_min
+            monitor.z_max = z_max
+
+        case _:
+            print('Unknown monitor')
+            
+
+    if kwargs:
+        for key, value in kwargs.items():
+            monitor[key] = value
+
+def update_global_mesh(client, params, **kwargs):
+    pass

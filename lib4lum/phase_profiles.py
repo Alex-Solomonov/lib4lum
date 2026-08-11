@@ -14,7 +14,7 @@ def _make_grid(size: int, period: float) -> tuple[npt.NDArray[np.float64], npt.N
     return X, Y
 
 
-def lens_profile(F: float, wl: float, period: float, size: int) -> npt.NDArray[np.float64]:
+def lens_profile(F: float, wl: float = None, period: float = None, size: int = None) -> npt.NDArray[np.float64]:
     """Computes 2D phase profile of a lens from Fermat's principle.
     Args:
         F: Focal distance in meters.
@@ -25,6 +25,7 @@ def lens_profile(F: float, wl: float, period: float, size: int) -> npt.NDArray[n
     Returns:
         A numpy array of shape (2*size+1, 2*size+1) containing the phase.
     """
+
     X, Y = _make_grid(size, period)
     phase = -(np.sqrt(X**2 + Y**2 + F**2) - F)*2*np.pi/wl
     return phase, X, Y
@@ -46,16 +47,6 @@ def deflector_profile(theta_x: float, theta_y: float, wl: float, period: float, 
     phase = -(X*np.sin(theta_x) + Y*np.sin(theta_y))*2*np.pi/wl
     return phase
 
-def binarize(phase: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Binarizes phase to {0, pi}.
-    Args:
-        phase: Phase array.
-
-    Returns:
-        A numpy array with values 0 or pi.
-    """
-    phase = np.angle(np.exp(1j*phase))
-    return np.where(phase >= 0, np.pi, 0.)
 
 def quantize(phase: npt.NDArray[np.float64], n_levels: int) -> npt.NDArray[np.float64]:
     """Quantizes phase to N evenly-spaced levels in [0, 2*pi).
@@ -77,12 +68,14 @@ def quantize(phase: npt.NDArray[np.float64], n_levels: int) -> npt.NDArray[np.fl
     return (shifted // step) * step
 
 
-### !!!TODO!!! Need normal interpolation method
-### Right now magic numbers
-def get_radii(phase : npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    phase_func = interpolate.interp1d([0, np.pi], [1.17004778e-07, 1.62533128e-07], fill_value = 'extrapolate')
-    return phase_func(phase)
-
+def get_unit(phase_train  : npt.NDArray[np.float64], 
+             radii_train  : npt.NDArray[np.float64],
+             phase_target : npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    '''
+    
+    '''
+    phase_function  = interpolate.interp1d(phase_train, radii_train, fill_value = 'extrapolate')
+    return phase_function(phase_target)
 
 
 if __name__ == '__main__':
