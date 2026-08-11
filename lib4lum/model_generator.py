@@ -402,3 +402,6 @@ def add_monitor_profile(client, monitor_name, **kwargs):
     if kwargs:
         for key, value in kwargs.items():
             monitor[key] = value
+
+def update_global_mesh(client, params, **kwargs):
+    pass
