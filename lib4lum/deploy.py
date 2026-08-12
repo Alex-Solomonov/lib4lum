@@ -1,7 +1,7 @@
 from pathlib import Path
 from configparser import ConfigParser
 
-def run() -> None:
+def run(**kwargs) -> None:
     '''
     Initializes the project directory structure.
     The function determines the project's root directory as the parent
@@ -24,9 +24,9 @@ def run() -> None:
     GLOBAL_PATH = Path.cwd().parent
     MODELS_PATH = GLOBAL_PATH / 'models'
     MODELS_PATH.mkdir(parents = True, exist_ok = True)
-    _generate_config()
+    _generate_config(**kwargs)
 
-def _generate_config() -> None:
+def _generate_config(**kwargs) -> None:
     '''
     '''
     GLOBAL_PATH = Path.cwd().parent
@@ -55,7 +55,7 @@ def _generate_config() -> None:
     config['STRUCTURE']['period'] = '425e-09'
     
     config.add_section('UNIT')
-    config['UNIT CELL']['height'] = '1e-09'
+    config['UNIT']['height'] = '1e-09'
 
     with open(MODELS_PATH / 'default_model_config.ini', 'w') as config_file:
         config.write(config_file)
