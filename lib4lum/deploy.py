@@ -98,5 +98,3 @@ def read_config(config_path : Path | str = None, config_name : str = None) -> di
     }
 
     return params
-
-params = read_config()
