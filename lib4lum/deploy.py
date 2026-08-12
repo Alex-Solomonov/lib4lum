@@ -60,26 +60,43 @@ def _generate_config(**kwargs) -> None:
     with open(MODELS_PATH / 'default_model_config.ini', 'w') as config_file:
         config.write(config_file)
 
-def read_config(config_path = None) -> dict:
+def _parse_dict_value(value):
+    try:
+        return(int(value))
+    except:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def read_config(config_path : Path | str = None, config_name : str = None) -> dict:
     '''
     '''
+
     if config_path is None:
-        GLOBAL_PATH = Path.cwd().parent
-        MODELS_PATH = GLOBAL_PATH / 'models'
-        config_path = MODELS_PATH / 'default_model_config.ini'
+        global_path = Path.cwd().parent
+        config_path = global_path / 'models'
+    else:
+        config_path = Path(config_path)
+
+    if config_name is None:
+        config_name = config_path / 'default_model_config.ini'
+
+    full_path = config_path / config_name
 
     config = ConfigParser()
-    config.read(config_path)
+    config.read(full_path)
 
     params = {
         section: {
-            key: float(value)
+            key: _parse_dict_value(value)
             for key, value in config[section].items()
         }
         for section in config.sections()
     }
 
-    #ToDo Redo without dummy way
-    params['STRUCTURE']['size'] = config.getint('STRUCTURE', 'size')
-
     return params
+
+params = read_config()
