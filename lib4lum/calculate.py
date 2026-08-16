@@ -1,6 +1,7 @@
 from .dependencies import *
 from multiprocessing import Pool
 from psutil import cpu_count
+from pathlib import Path
 
 def _default_processes() -> int:
     """
@@ -9,14 +10,14 @@ def _default_processes() -> int:
     """
     return max(1, (cpu_count(logical=False) or 2) // 2)
 
-def _run(file : Path | str, cores : int = 2, **kwards):
+def _run(file : Path | str, cores : int = 2, **kwargs):
     '''
     cores : int
         Logical cores (physical + thread according documentation)
     '''
     savename = file.parent.parent / 'solved' / file.name
     ### Dummy way to load correct type
-    client = lumapi.FDTD(str(file), processes = cores, **kwards)
+    client = lumapi.FDTD(str(file), processes = cores, **kwargs)
 
     client.run()
 
@@ -24,7 +25,8 @@ def _run(file : Path | str, cores : int = 2, **kwards):
     client.close()
     os.remove(file)
 
-def run_folder(folder_path : Path | str, **kwards) -> None:
+
+def run_folder(folder_path : Path | str, **kwargs) -> None:
     '''
     Run all FDTD simulation files located in the 'clean' subdirectory,
     save the solved projects to the 'solved' subdirectory, and remove
@@ -44,7 +46,7 @@ def run_folder(folder_path : Path | str, **kwards) -> None:
         None
     '''
 
-    if 'multiprocessing' in kwards:
+    if 'multiprocessing' in kwargs:
         workers = _default_processes()
         child_cores = 1
     else:
@@ -57,7 +59,7 @@ def run_folder(folder_path : Path | str, **kwards) -> None:
     with Pool(processes = workers) as pool:
         pool.map(_run, names, child_cores)
       
-def run_project(project_path : Path | str, **kwards) -> None:
+def run_project(project_path : Path | str = None, **kwargs) -> None:
     '''
     Process all simulation folders within a project directory.
     The function iterates through all subdirectories of 'project_path'
@@ -71,7 +73,11 @@ def run_project(project_path : Path | str, **kwards) -> None:
         None
     '''
 
+    if project_path is None:
+        GLOBAL_PATH = Path.cwd().parent
+        project_path = GLOBAL_PATH / 'models'
+
     folder_list = [x for x in project_path.iterdir() if x.is_dir()]
 
-    for folder in tqdm(folder_list):
-        run_folder(folder, **kwards)
+    for folder in tqdm(folder_list, desc= 'Folders: '):
+        run_folder(folder, **kwargs)
