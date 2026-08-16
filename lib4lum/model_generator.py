@@ -410,44 +410,48 @@ def apply_randomness(parameter_name):
     def actual_decorator(func):
         from pathlib import Path
         from tqdm import tqdm
+        import lumapi
         
         def wrapper(*args, **kwargs):
-        
-            etalon_var = globals()[parameter_name]
+            first_use = True
+
+            etalon_var = kwargs[parameter_name]
             GLOBAL_PATH = Path.cwd().parent
             MODELS_PATH = GLOBAL_PATH / 'models'
 
             folder_list = [x for x in MODELS_PATH.iterdir() if x.is_dir()]
-            try:
-                for folder_path in folder_list:
-                    clean_path = folder_path / 'clean'
-                    print('Reading {}'.format(folder_path))
-                    data = np.loadtxt(folder_path / '!seeds.txt')
 
-                    eta = data[0]
-                    seeds = data[1:]
+            for folder_path in folder_list:
+                clean_path = folder_path / 'clean'
+                print('Reading {}'.format(folder_path))
+                data = np.loadtxt(folder_path / '!seeds.txt')
 
-                    for seed in tqdm(seeds):
-                        rng = np.random.default_rng(int(seed))
-                        floating_error = rng.uniform(low = 1-eta, high = 1+eta, size = np.shape(etalon_var))
+                eta = data[0]
+                seeds = data[1:]
 
-                        globals()[parameter_name] = floating_error * etalon_var
+                for seed in tqdm(seeds):
+                    rng = np.random.default_rng(int(seed))
+                    floating_error = rng.uniform(low = 1-eta, high = 1+eta, size = np.shape(etalon_var))
 
-                        #reopen fresh client
+                    call_kwargs = dict(kwargs)
+                
+                    call_kwargs[parameter_name] = floating_error * etalon_var
+
+                    if first_use:
+                        first_use = False
+                        local_client = kwargs['client']
+                    else:
                         local_client = lumapi.FDTD(hide=True)
-                        call_kwargs = dict(kwargs)
-                        call_kwargs['client'] = local_client
 
-                        func(*args, **call_kwargs)
+                    call_kwargs['client'] = local_client
 
-                        local_client.save(str(clean_path / str(int(seed))))
-                        local_client.close()
+                    func(*args, **call_kwargs)
 
-                return 
-            
-            finally:
-                globals()[parameter_name] = etalon_var
-            
+                    local_client.save(str(clean_path / str(int(seed))))
+                    local_client.close()
+
+            return 
+                        
         return wrapper
     
     return actual_decorator
