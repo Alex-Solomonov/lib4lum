@@ -406,7 +406,7 @@ def add_monitor_profile(client, monitor_name, **kwargs):
 def update_global_mesh(client, params, **kwargs):
     pass
 
-def apply_randomness(parameter_name):
+def apply_randomness_legacy(parameter_name):
     def actual_decorator(func):
         from pathlib import Path
         from tqdm import tqdm
@@ -454,4 +454,88 @@ def apply_randomness(parameter_name):
                         
         return wrapper
     
+    return actual_decorator
+
+#Dummy hardcode
+#TODO redo this part
+def _save_preview_pdf(etalon_X, etalon_Y, X, Y, radii, show, savename):
+    import matplotlib.pyplot as plt
+    correction_X = etalon_X[1,0] - etalon_X[0,0]
+    correction_Y = etalon_Y[0,1] - etalon_Y[0,0]
+    fig, ax = plt.subplots(1,1, figsize=(11.69,8.27))
+    im = ax.imshow(show)
+    im.set_cmap('gray')
+    im.set_extent([np.min(etalon_X) - correction_X, np.max(etalon_X) + correction_X,
+                   np.min(etalon_Y) - correction_Y, np.max(etalon_Y) + correction_Y])
+    ax.set_xlim([-0.21/2, 0.21/2])
+    ax.set_ylim([-0.297/2, 0.297/2])
+    ax.axis('off')
+
+    for i in range(np.shape(radii)[0]):
+        for j in range(np.shape(radii)[1]):
+            if radii[i,j] == np.max(radii):
+                c = 'white'
+            else:
+                c = 'red'
+            circle = plt.Circle((X[i,j], Y[i,j]), radius = radii[i,j], color=c)
+            ax.add_patch(circle)
+
+    fig.savefig(str(savename)+'.pdf', bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+def apply_randomness(*par_args, save = None):
+    def actual_decorator(func):
+        from pathlib import Path
+        from tqdm import tqdm
+        import lumapi
+        
+        def wrapper(*args, **kwargs):
+            first_use = True
+
+            GLOBAL_PATH = Path.cwd().parent
+            MODELS_PATH = GLOBAL_PATH / 'models'
+
+            folder_list = [x for x in MODELS_PATH.iterdir() if x.is_dir()]
+            for folder_path in folder_list:
+                clean_path = folder_path / 'clean'
+                print('Reading {}'.format(folder_path))
+                eta = np.loadtxt(folder_path / '!seeds.txt', max_rows = 1)
+                seeds = np.loadtxt(folder_path / '!seeds.txt', skiprows = 1)
+                realisations = np.shape(seeds)[0]
+
+                for realisaton_idx in tqdm(np.arange(realisations)):
+                    call_kwargs  = dict(kwargs)
+                    save_str = ''
+
+                    for par_idx, parameter in enumerate(par_args):
+                        seed = int(seeds[realisaton_idx, par_idx])
+                        save_str += '_' + parameter + '_' + str(seed)
+                        etalon_var = kwargs[parameter]
+                        rng = np.random.default_rng(seed)
+                        floating_error = rng.uniform(low = 1-eta, high = 1+eta, size = np.shape(etalon_var))
+                        call_kwargs[parameter] = floating_error * etalon_var
+
+                    save_str = save_str[1:] #to cut out underscore
+
+                    if save is not None:
+                        fig_folder = folder_path / 'figures'
+                        fig_folder.mkdir(parents = True, exist_ok = True)
+
+                        _save_preview_pdf(etalon_X = kwargs['X'], etalon_Y = kwargs['Y'],
+                                          X = call_kwargs['X'], Y = call_kwargs['Y'], 
+                                          radii = call_kwargs['radii'], show = save,
+                                          savename=fig_folder / save_str)
+
+                    if first_use:
+                        first_use = False
+                        local_client = kwargs['client']
+                    else:
+                        local_client = lumapi.FDTD(hide = True)
+                    call_kwargs['client'] = local_client
+
+                    func(*args, **call_kwargs)
+                    local_client.save(str(clean_path / save_str))
+                    local_client.close()
+        return wrapper
     return actual_decorator
