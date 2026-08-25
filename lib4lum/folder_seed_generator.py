@@ -4,7 +4,7 @@ from numpy import random, zeros, savetxt
 
 __all__ = 'generate_seed'
 
-def generate_seed(eta : float = 0., realizations : int = 1) -> None:
+def generate_seed(eta : float = 0., realizations : int = 1, variables : int = 1) -> None:
     '''
     Generates and saves a set of random seeds for disorder realizations.
     The function creates a directory structure associated with the specified
@@ -33,6 +33,9 @@ def generate_seed(eta : float = 0., realizations : int = 1) -> None:
         realizations: int
             Number of random seeds (disorder realizations) to generate.
 
+        variables: int
+            Number of variables
+
     Returns:
         None
 
@@ -48,11 +51,7 @@ def generate_seed(eta : float = 0., realizations : int = 1) -> None:
     
     seed = int(time())
     rng = random.default_rng(seed)
-    seed_realizations = rng.integers(low = 0, high = seed, size = (realizations, 1))
-
-    saveseed_array = zeros([realizations+1, 1])
-    saveseed_array[0] = eta
-    saveseed_array[1:] = seed_realizations
+    seed_realizations = rng.integers(low = 0, high = seed, size = (realizations, variables))
 
     with open(SEED_PATH / '!seeds.txt', 'w') as file:
         savetxt(file, [eta], fmt = '%f')
