@@ -49,14 +49,13 @@ def generate_seed(eta : float = 0., realizations : int = 1, variables : int = 1)
     clean_path.mkdir(parents = True, exist_ok = True)
     solved_path.mkdir(parents = True, exist_ok = True)
     
-    seed = int(time())
+    seed = random.SeedSequence() 
     rng = random.default_rng(seed)
-    seed_realizations = rng.integers(low = 0, high = seed, size = (realizations, variables))
+    seed_realizations = rng.integers(low = 0, high = 2**31-1, size = (realizations, variables))
 
     with open(SEED_PATH / '!seeds.txt', 'w') as file:
         savetxt(file, [eta], fmt = '%f')
         savetxt(file, seed_realizations, fmt = '%d')
-
 
 
 
